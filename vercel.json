@@ -1,0 +1,15 @@
+{
+  "functions": {
+    "app/api/chat/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/metrics/route.ts": {
+      "maxDuration": 10
+    }
+  },
+  "env": {
+    "OPENAI_API_KEY": "@openai_api_key",
+    "ANTHROPIC_API_KEY": "@anthropic_api_key",
+    "CEREBRAS_API_KEY": "@cerebras_api_key"
+  }
+}
