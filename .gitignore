@@ -9,6 +9,13 @@ yarn-error.log*
 out/
 build/
 
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# SWC
+.swc/
+
 # Environment variables
 .env
 .env.local
