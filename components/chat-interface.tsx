@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
 import { getAllProviders, getProvider } from '@/lib/llm-providers'
 import { PerformanceMetrics } from '@/lib/telemetry'
@@ -10,6 +9,10 @@ import MessageList from './message-list'
 import MessageInput from './message-input'
 import ProviderSelector from './provider-selector'
 import MetricsPanel from './metrics-panel'
+import EnhancedMetricsPanel from './enhanced-metrics-panel'
+import { ThemeToggle } from '@/lib/theme-toggle'
+import SettingsPanel from './settings-panel'
+import { apiKeyManager, type ProviderConfig } from '@/lib/api-key-manager'
 
 interface ChatInterfaceProps {
   id: string
@@ -24,54 +27,49 @@ export default function ChatInterface({
   const [selectedModel, setSelectedModel] = useState('llama-3.3-70b')
   const [metrics, setMetrics] = useState<Record<string, PerformanceMetrics>>({})
   const [showMetrics, setShowMetrics] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [apiKeyConfigs, setApiKeyConfigs] = useState<Record<string, ProviderConfig>>({})
   
-  const { append, messages, isLoading, status } = useChat({
+  const { messages, append, status } = useChat({
     id,
     initialMessages: initialMessages as any,
-    transport: new DefaultChatTransport({
-      api: '/api/chat',
-      body: () => ({
-        provider: selectedProvider,
-        model: selectedModel,
-      }),
-    }),
-    onData: (data: any) => {
-      console.log('Received data:', data)
+    api: '/api/chat',
+    body: {
+      provider: selectedProvider,
+      model: selectedModel,
+      apiKey: apiKeyConfigs[selectedProvider]?.apiKey ? 
+        apiKeyManager.getAPIKey(selectedProvider) : undefined,
     },
-    onFinish: (message: UIMessage) => {
-      console.log('Chat finished:', message)
+    streamProtocol: 'text',
+    onFinish: (message: any, options: any) => {
+      console.log('Chat finished:', message, options)
     },
     onError: (error: unknown) => {
       console.error('Chat error:', error)
     }
-  } as any)
+  })
 
-  // Debug: Log status changes
-  useEffect(() => {
-    console.log('Chat status changed:', status)
-  }, [status])
 
-  // Debug: Log messages changes
+  // Load API key configurations on mount
   useEffect(() => {
-    console.log('Messages updated:', messages.length, messages)
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1]
-      console.log('Last message:', lastMessage)
-      if (lastMessage.role === 'assistant') {
-        console.log('Assistant message parts:', lastMessage.parts)
-      }
-    }
-  }, [messages])
+    const configs = apiKeyManager.getStoredConfigs()
+    setApiKeyConfigs(configs)
+  }, [])
 
   // Fetch metrics periodically
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
         const response = await fetch('/api/metrics')
-        const data = await response.json()
-        setMetrics(data)
+        if (response.ok) {
+          const data = await response.json()
+          setMetrics(data)
+        } else {
+          console.warn('Metrics API not available:', response.status)
+        }
       } catch (error) {
-        console.error('Failed to fetch metrics:', error)
+        console.warn('Failed to fetch metrics:', error)
+        // Don't set metrics on error, just log it
       }
     }
 
@@ -82,10 +80,8 @@ export default function ChatInterface({
   }, [])
 
   const handleSubmit = (input: string) => {
-    if (input.trim() && !isLoading) {
-      console.log('Sending message:', input)
-      console.log('Current status:', status)
-      // Use the correct message format for useChat
+    if (input.trim() && status === 'ready') {
+      // Use append with correct message format
       append({ role: 'user', content: input })
     }
   }
@@ -128,10 +124,6 @@ export default function ChatInterface({
     }
   }, [selectedProvider])
 
-  // Debug: Log messages changes
-  useEffect(() => {
-    console.log('Messages updated:', messages.length, messages)
-  }, [messages])
 
   return (
     <div className="flex h-screen bg-background">
@@ -153,19 +145,26 @@ export default function ChatInterface({
                 onProviderChange={setSelectedProvider}
                 selectedModel={selectedModel}
                 onModelChange={setSelectedModel}
-                disabled={isLoading}
+                disabled={status !== 'ready'}
               />
+              <ThemeToggle />
+              <button
+                onClick={() => setShowSettings(true)}
+                className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors"
+              >
+                API Keys
+              </button>
               <button
                 onClick={handleNewChat}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/80 transition-colors"
-                disabled={isLoading}
+                disabled={status !== 'ready'}
               >
                 New Chat
               </button>
               <button
                 onClick={handleClearChat}
                 className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/80 transition-colors"
-                disabled={isLoading}
+                disabled={status !== 'ready'}
               >
                 Clear Chat
               </button>
@@ -180,22 +179,29 @@ export default function ChatInterface({
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-hidden">
-          <MessageList messages={messages} isLoading={isLoading} />
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <MessageList messages={messages} isLoading={status === 'streaming'} />
         </div>
 
         {/* Input */}
-        <div className="border-t border-border p-4">
-          <MessageInput onSubmit={handleSubmit} disabled={isLoading} />
+        <div className="border-t border-border p-4 bg-background/95 backdrop-blur-sm sticky bottom-0 z-10">
+          <MessageInput onSubmit={handleSubmit} disabled={status !== 'ready'} />
         </div>
       </div>
 
-      {/* Metrics Panel */}
+      {/* Enhanced Metrics Panel */}
       {showMetrics && (
-        <div className="w-80 border-l border-border bg-card">
-          <MetricsPanel metrics={metrics} />
+        <div className="w-96 border-l border-border bg-card">
+          <EnhancedMetricsPanel metrics={metrics} />
         </div>
       )}
+
+      {/* Settings Panel */}
+      <SettingsPanel
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        onKeysUpdated={setApiKeyConfigs}
+      />
     </div>
   )
 }

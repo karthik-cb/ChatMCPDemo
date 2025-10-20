@@ -12,7 +12,13 @@ export async function createChat(): Promise<string> {
 
 export async function loadChat(id: string): Promise<UIMessage[]> {
   try {
-    const content = await readFile(getChatFile(id), 'utf8')
+    const chatFile = getChatFile(id)
+    if (!existsSync(chatFile)) {
+      // Create the chat file if it doesn't exist
+      await writeFile(chatFile, '[]')
+      return []
+    }
+    const content = await readFile(chatFile, 'utf8')
     return JSON.parse(content)
   } catch (error) {
     console.error('Error loading chat:', error)

@@ -5,7 +5,7 @@ A demonstration application showcasing how fast inference platforms like Cerebra
 ## Features
 
 - 🚀 **Fast Inference Comparison**: Compare Cerebras Llama 3.3 70B with OpenAI GPT-5 and Anthropic Claude Sonnet 4.5
-- 🔧 **MCP Server Integration**: Travel recommendation tools via Expedia MCP server
+- 🔧 **MCP Server Integration**: Travel recommendation tools via [Expedia MCP server](https://github.com/ExpediaGroup/expedia-travel-recommendations-mcp)
 - 💬 **Persistent Chat**: Message persistence with AI SDK 5
 - 📊 **Real-time Metrics**: Performance telemetry and comparison dashboard
 - 🎯 **Agentic Loop Control**: Multi-step tool calling and conversation management
@@ -67,11 +67,23 @@ Open [http://localhost:3000](http://localhost:3000) to see the demo.
 
 ## MCP Tools
 
-The demo includes travel recommendation tools that simulate Expedia's MCP server:
+The demo includes travel recommendation tools that can connect to the real [Expedia MCP server](https://github.com/ExpediaGroup/expedia-travel-recommendations-mcp):
 
 - **Hotel Search**: Find accommodations based on location, dates, and budget
 - **Activity Recommendations**: Discover local attractions and experiences
-- **Travel Planning**: Get comprehensive travel suggestions
+- **Flight Search**: Search for flights between destinations
+- **Car Rentals**: Find rental car options
+
+### 🔗 Real Expedia Integration
+
+To use the real Expedia MCP server (instead of mock data):
+
+1. **Get an Expedia API Key**: Visit [Expedia Partner Central](https://partner.expedia.com/)
+2. **Follow the Setup Guide**: See [docs/EXPEDIA-MCP-SETUP.md](docs/EXPEDIA-MCP-SETUP.md)
+3. **Test the Connection**: Run `node scripts/test-expedia-mcp.js`
+4. **Update Environment**: Add `EXPEDIA_API_KEY=your_key_here` to `.env.local`
+
+The real integration provides actual hotel prices, availability, and booking information!
 
 ## Performance Metrics
 

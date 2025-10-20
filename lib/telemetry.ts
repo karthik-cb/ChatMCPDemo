@@ -68,7 +68,7 @@ export class TelemetryCollector {
 
   getAllMetrics(): Record<string, PerformanceMetrics> {
     const result: Record<string, PerformanceMetrics> = {}
-    for (const provider of this.metrics.keys()) {
+    for (const provider of Array.from(this.metrics.keys())) {
       const metrics = this.getMetrics(provider)
       if (metrics) {
         result[provider] = metrics

@@ -2,6 +2,61 @@ import { openai } from '@ai-sdk/openai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { cerebras } from '@ai-sdk/cerebras'
 
+// Helper function to clean JSON schemas for Cerebras compatibility
+function cleanSchemaForCerebras(schema: any): any {
+  if (!schema || typeof schema !== 'object') return schema
+  
+  // Remove unsupported top-level keys
+  const cleaned = { ...schema }
+  delete cleaned.$schema
+  delete cleaned.$id
+  delete cleaned.title
+  delete cleaned.description
+  delete cleaned.examples
+  delete cleaned.default
+  
+  // Ensure additionalProperties is false for schemas with required arrays
+  if (cleaned.required && Array.isArray(cleaned.required) && cleaned.required.length > 0) {
+    cleaned.additionalProperties = false
+  }
+  
+  // Recursively clean nested objects
+  if (cleaned.properties) {
+    for (const [key, value] of Object.entries(cleaned.properties)) {
+      cleaned.properties[key] = cleanSchemaForCerebras(value)
+    }
+  }
+  
+  if (cleaned.items) {
+    cleaned.items = cleanSchemaForCerebras(cleaned.items)
+  }
+  
+  if (cleaned.anyOf) {
+    cleaned.anyOf = cleaned.anyOf.map(cleanSchemaForCerebras)
+  }
+  
+  if (cleaned.allOf) {
+    cleaned.allOf = cleaned.allOf.map(cleanSchemaForCerebras)
+  }
+  
+  if (cleaned.oneOf) {
+    cleaned.oneOf = cleaned.oneOf.map(cleanSchemaForCerebras)
+  }
+  
+  if (cleaned.$defs) {
+    for (const [key, value] of Object.entries(cleaned.$defs)) {
+      cleaned.$defs[key] = cleanSchemaForCerebras(value)
+    }
+  }
+  
+  return cleaned
+}
+
+// Custom Cerebras provider wrapper to handle schema compatibility
+function createCerebrasProvider(modelId: string, config: any) {
+  return cerebras(modelId)
+}
+
 export interface Model {
   id: string
   name: string
@@ -85,17 +140,32 @@ export function getAllProviders(): LLMProvider[] {
   return Object.values(llmProviders)
 }
 
-export function getModelInstance(providerId: string, modelId: string) {
+export function getModelInstance(providerId: string, modelId: string, customApiKey?: string) {
   const provider = getProvider(providerId)
   if (!provider) return null
   
   if (providerId === 'cerebras') {
-    // Use official Cerebras AI SDK provider
-    return cerebras(modelId)
+    // Use custom Cerebras provider wrapper for schema compatibility
+    const config: any = {
+      apiKey: customApiKey || process.env.CEREBRAS_API_KEY,
+      // Enable structured outputs for MCP server compatibility
+      supportsStructuredOutputs: true
+    }
+    
+    // Special configuration for Qwen thinking models
+    if (modelId.includes('thinking')) {
+      config.enable_thinking = true
+    }
+    
+    return createCerebrasProvider(modelId, config)
   } else if (providerId === 'openai') {
-    return openai(modelId)
+    return openai(modelId as any, {
+      apiKey: customApiKey || process.env.OPENAI_API_KEY
+    } as any)
   } else if (providerId === 'anthropic') {
-    return anthropic(modelId)
+    return anthropic(modelId as any, {
+      apiKey: customApiKey || process.env.ANTHROPIC_API_KEY
+    } as any)
   }
   
   return null

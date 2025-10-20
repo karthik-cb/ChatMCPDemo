@@ -3,6 +3,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { spawn } from 'child_process'
 import { tool } from 'ai'
 import { z } from 'zod'
+import { ferryhopperMCPTools } from './ferryhopper-mcp-client'
+import { airbnbMCPTools } from './airbnb-mcp-client'
 
 // Travel recommendation tool schema
 const TravelRecommendationSchema = z.object({
@@ -15,10 +17,10 @@ const TravelRecommendationSchema = z.object({
   preferences: z.array(z.string()).optional().describe('Travel preferences')
 })
 
-export const travelRecommendationTool = tool({
+export const travelRecommendationTool: any = {
   description: 'Get travel recommendations for hotels and activities',
   parameters: TravelRecommendationSchema,
-  execute: async (params) => {
+  execute: async (params: any) => {
     try {
       // In a real implementation, this would connect to the Expedia MCP server
       // For demo purposes, we'll simulate the response
@@ -32,7 +34,7 @@ export const travelRecommendationTool = tool({
       }
     }
   }
-})
+}
 
 async function simulateExpediaMCPCall(params: z.infer<typeof TravelRecommendationSchema>) {
   // Simulate API call delay
@@ -88,4 +90,8 @@ async function simulateExpediaMCPCall(params: z.infer<typeof TravelRecommendatio
 // Additional MCP tools can be added here
 export const mcpTools = {
   travelRecommendation: travelRecommendationTool,
+  // Ferryhopper MCP Tools
+  ...ferryhopperMCPTools,
+  // Airbnb MCP Tools
+  ...airbnbMCPTools,
 }
