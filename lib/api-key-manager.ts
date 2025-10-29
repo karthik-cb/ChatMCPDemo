@@ -6,7 +6,7 @@
  */
 
 export interface ProviderConfig {
-  provider: 'cerebras' | 'openai' | 'anthropic';
+  provider: 'cerebras' | 'openai' | 'anthropic' | 'expedia' | 'airbnb' | 'ferryhopper' | 'turkish-airlines' | 'mapbox';
   apiKey: string;
   model: string;
   enabled: boolean;
@@ -118,7 +118,100 @@ class SecureAPIKeyManager {
    */
   async validateAPIKey(provider: string, apiKey: string): Promise<KeyValidationResult> {
     try {
-      // Make a minimal test request to validate the key
+      // Special handling for MCP servers that don't use traditional API key validation
+      if (provider === 'turkish-airlines') {
+        // Turkish Airlines uses OAuth authentication, not API key validation
+        // Just mark as valid if account number is provided
+        if (apiKey && apiKey.trim().length > 0) {
+          const configs = this.getStoredConfigs();
+          if (configs[provider]) {
+            configs[provider].validationStatus = 'valid';
+            configs[provider].lastValidated = new Date();
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(configs));
+          }
+          return { 
+            isValid: true,
+            model: 'mcp-server'
+          };
+        } else {
+          return { 
+            isValid: false, 
+            error: 'Miles&Smiles account number is required' 
+          };
+        }
+      }
+
+      if (provider === 'airbnb' || provider === 'ferryhopper') {
+        // These servers don't require API keys, just mark as valid
+        const configs = this.getStoredConfigs();
+        if (configs[provider]) {
+          configs[provider].validationStatus = 'valid';
+          configs[provider].lastValidated = new Date();
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(configs));
+        }
+        return { 
+          isValid: true,
+          model: 'mcp-server'
+        };
+      }
+
+      if (provider === 'mapbox') {
+        // Mapbox requires a valid access token - test with a simple search request
+        if (apiKey && apiKey.trim().length > 0) {
+          try {
+            // Test the token with a simple search request to Mapbox Search Box API
+            const testUrl = `https://api.mapbox.com/search/searchbox/v1/suggest?q=test&access_token=${apiKey}&session_token=test-session`;
+            
+            const response = await fetch(testUrl, {
+              method: 'GET',
+              headers: {
+                'Accept': 'application/json'
+              }
+            });
+
+            if (response.ok) {
+              // Token is valid
+              const configs = this.getStoredConfigs();
+              if (configs[provider]) {
+                configs[provider].validationStatus = 'valid';
+                configs[provider].lastValidated = new Date();
+                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(configs));
+              }
+              return { 
+                isValid: true,
+                model: 'mapbox-api'
+              };
+            } else if (response.status === 401) {
+              return { 
+                isValid: false, 
+                error: 'Invalid Mapbox access token. Please check your token.' 
+              };
+            } else if (response.status === 403) {
+              return { 
+                isValid: false, 
+                error: 'Mapbox access token is forbidden. Check your account status or token permissions.' 
+              };
+            } else {
+              return { 
+                isValid: false, 
+                error: `Mapbox API error: ${response.status} ${response.statusText}` 
+              };
+            }
+          } catch (error) {
+            return { 
+              isValid: false, 
+              error: `Network error testing Mapbox token: ${error}` 
+            };
+          }
+        } else {
+          return { 
+            isValid: false, 
+            error: 'Please enter a Mapbox access token' 
+          };
+        }
+      }
+
+      // Traditional API key validation for LLM providers
       const testRequest = {
         provider,
         apiKey,

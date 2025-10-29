@@ -5,7 +5,9 @@ A demonstration application showcasing how fast inference platforms like Cerebra
 ## Features
 
 - 🚀 **Fast Inference Comparison**: Compare Cerebras Llama 3.3 70B with OpenAI GPT-5 and Anthropic Claude Sonnet 4.5
-- 🔧 **MCP Server Integration**: Travel recommendation tools via [Expedia MCP server](https://github.com/ExpediaGroup/expedia-travel-recommendations-mcp)
+- 🔧 **MCP Server Integration**: Multiple travel recommendation tools via MCP servers
+- 📋 **MCP Servers Overview**: Comprehensive dashboard showing all available MCP integrations
+- 🔑 **Unified API Key Management**: Centralized configuration for all providers and MCP servers
 - 💬 **Persistent Chat**: Message persistence with AI SDK 5
 - 📊 **Real-time Metrics**: Performance telemetry and comparison dashboard
 - 🎯 **Agentic Loop Control**: Multi-step tool calling and conversation management
@@ -65,14 +67,38 @@ Open [http://localhost:3000](http://localhost:3000) to see the demo.
 4. **Compare Performance**: Use the metrics panel to see response times and success rates
 5. **Switch Providers**: Test the same query with different providers to compare
 
-## MCP Tools
+## MCP Servers
 
-The demo includes travel recommendation tools that can connect to the real [Expedia MCP server](https://github.com/ExpediaGroup/expedia-travel-recommendations-mcp):
+The demo integrates with multiple MCP servers for comprehensive travel assistance:
 
-- **Hotel Search**: Find accommodations based on location, dates, and budget
-- **Activity Recommendations**: Discover local attractions and experiences
-- **Flight Search**: Search for flights between destinations
-- **Car Rentals**: Find rental car options
+### ✈️ Turkish Airlines MCP
+- **API Key Required**: Yes (Miles&Smiles account required)
+- **Features**: Flight search, real-time status, booking management, Miles&Smiles integration
+- **Tools**: 13 powerful tools for flight information, booking details, and member services
+- **Documentation**: [Turkish Airlines MCP Server](https://mcp.turkishtechlab.com)
+
+### 🌍 Expedia Travel Recommendations
+- **API Key Required**: Yes ([Get your key here](https://partner.expedia.com/))
+- **Features**: Hotel search, flight recommendations, activity suggestions, car rentals
+- **Documentation**: [GitHub Repository](https://github.com/ExpediaGroup/expedia-travel-recommendations-mcp)
+
+### ⛴️ Ferryhopper Ferry Routes  
+- **API Key Required**: No (Free to use)
+- **Features**: Real-time ferry schedules, route planning, booking redirects
+- **Coverage**: 33 countries, 190+ ferry operators
+- **Documentation**: [Ferryhopper MCP Docs](https://ferryhopper.github.io/fh-mcp/)
+
+### 🏠 Airbnb Listings
+- **API Key Required**: No (Free to use)
+- **Features**: Property search, detailed listings, Google Maps integration
+- **Documentation**: [GitHub Repository](https://github.com/openbnb-org/mcp-server-airbnb)
+
+### 📋 MCP Servers Dashboard
+Access the comprehensive MCP servers overview through the Settings panel to:
+- View all available integrations
+- Check server status and configuration
+- Manage API keys for required services
+- Access documentation and setup guides
 
 ### 🔗 Real Expedia Integration
 

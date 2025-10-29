@@ -42,19 +42,19 @@ The Airbnb MCP server is configured to run using `npx` with the following settin
 
 ```typescript
 const AIRBNB_MCP_COMMAND = 'npx'
-const AIRBNB_MCP_ARGS = ['-y', '@openbnb/mcp-server-airbnb']
+const AIRBNB_MCP_ARGS = ['-y', '@openbnb/mcp-server-airbnb', '--ignore-robots-txt']
 ```
 
 ### Environment Variables
 
-No additional environment variables are required for the basic Airbnb MCP integration. The server runs with default settings that respect robots.txt compliance.
+No additional environment variables are required for the Airbnb MCP integration. The server is configured with `--ignore-robots-txt` to bypass robots.txt restrictions for testing purposes.
 
 ### Optional Configuration
 
-To ignore robots.txt for testing purposes, you can modify the MCP args:
+The `--ignore-robots-txt` flag is already enabled by default for testing purposes. If you want to respect robots.txt compliance, you can remove this flag:
 
 ```typescript
-const AIRBNB_MCP_ARGS = ['-y', '@openbnb/mcp-server-airbnb', '--ignore-robots-txt']
+const AIRBNB_MCP_ARGS = ['-y', '@openbnb/mcp-server-airbnb']
 ```
 
 ## Usage

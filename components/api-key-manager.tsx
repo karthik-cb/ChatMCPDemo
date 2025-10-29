@@ -17,9 +17,14 @@ export default function APIKeyManager({ onKeysUpdated }: APIKeyManagerProps) {
   const [showTransparency, setShowTransparency] = useState(false)
 
   const providers = [
-    { id: 'cerebras', name: 'Cerebras', placeholder: 'Your Cerebras API key' },
-    { id: 'openai', name: 'OpenAI', placeholder: 'sk-...' },
-    { id: 'anthropic', name: 'Anthropic', placeholder: 'sk-ant-...' }
+    { id: 'cerebras', name: 'Cerebras', placeholder: 'Your Cerebras API key', category: 'llm' },
+    { id: 'openai', name: 'OpenAI', placeholder: 'sk-...', category: 'llm' },
+    { id: 'anthropic', name: 'Anthropic', placeholder: 'sk-ant-...', category: 'llm' },
+    { id: 'turkish-airlines', name: 'Turkish Airlines', placeholder: 'Your Miles&Smiles account', category: 'mcp' },
+    { id: 'expedia', name: 'Expedia Travel', placeholder: 'Your Expedia API key', category: 'mcp' },
+    { id: 'mapbox', name: 'Mapbox', placeholder: 'Your Mapbox access token', category: 'mcp' },
+    { id: 'airbnb', name: 'Airbnb', placeholder: 'No API key required', category: 'mcp' },
+    { id: 'ferryhopper', name: 'Ferryhopper', placeholder: 'No API key required', category: 'mcp' }
   ]
 
   useEffect(() => {
@@ -33,6 +38,24 @@ export default function APIKeyManager({ onKeysUpdated }: APIKeyManagerProps) {
   }
 
   const handleSaveKey = (provider: string, apiKey: string) => {
+    // Check if this is an MCP server that doesn't require API keys
+    const mcpNoKeyServers = ['airbnb', 'ferryhopper']
+    if (mcpNoKeyServers.includes(provider)) {
+      // For servers that don't need keys, just mark as enabled
+      const configs = apiKeyManager.getStoredConfigs()
+      configs[provider] = {
+        provider: provider as any,
+        apiKey: '', // No key needed
+        model: 'default',
+        enabled: true,
+        lastValidated: new Date(),
+        validationStatus: 'valid'
+      }
+      localStorage.setItem('mcp-demo-api-keys', JSON.stringify(configs))
+      loadConfigs()
+      return
+    }
+
     if (!apiKey.trim()) {
       alert('Please enter a valid API key')
       return
@@ -42,7 +65,10 @@ export default function APIKeyManager({ onKeysUpdated }: APIKeyManagerProps) {
     const defaultModels = {
       cerebras: 'llama-3.3-70b',
       openai: 'gpt-4o',
-      anthropic: 'claude-3-5-sonnet-20241022'
+      anthropic: 'claude-3-5-sonnet-20241022',
+      'turkish-airlines': 'default',
+      expedia: 'default',
+      mapbox: 'default'
     }
     
     apiKeyManager.saveAPIKey(provider, apiKey, defaultModels[provider as keyof typeof defaultModels] || 'default')
@@ -118,10 +144,13 @@ export default function APIKeyManager({ onKeysUpdated }: APIKeyManagerProps) {
       </div>
 
       {/* API Key Management */}
-      <div className="space-y-4">
+      <div className="space-y-6">
         <h3 className="text-lg font-semibold">API Key Configuration</h3>
         
-        {providers.map((provider) => {
+        {/* LLM Providers */}
+        <div className="space-y-4">
+          <h4 className="text-md font-medium text-gray-700 dark:text-gray-300">🤖 LLM Providers</h4>
+          {providers.filter(p => p.category === 'llm').map((provider) => {
           const config = configs[provider.id]
           const isVisible = showKeys[provider.id]
           const apiKey = config ? apiKeyManager.getAPIKey(provider.id) : ''
@@ -190,6 +219,109 @@ export default function APIKeyManager({ onKeysUpdated }: APIKeyManagerProps) {
             </div>
           )
         })}
+        </div>
+
+        {/* MCP Servers */}
+        <div className="space-y-4">
+          <h4 className="text-md font-medium text-gray-700 dark:text-gray-300">🔌 MCP Servers</h4>
+          {providers.filter(p => p.category === 'mcp').map((provider) => {
+          const config = configs[provider.id]
+          const isVisible = showKeys[provider.id]
+          const apiKey = config ? apiKeyManager.getAPIKey(provider.id) : ''
+          const isNoKeyServer = ['airbnb', 'ferryhopper'].includes(provider.id)
+          
+          return (
+            <div key={provider.id} className="border rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium">{provider.name}</h4>
+                <div className="flex items-center gap-2">
+                  {isNoKeyServer ? (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  ) : (
+                    getValidationIcon(provider.id)
+                  )}
+                  {!isNoKeyServer && config && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleValidateKey(provider.id)}
+                      disabled={validating[provider.id]}
+                    >
+                      {validating[provider.id] ? 'Validating...' : 'Validate'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {isNoKeyServer ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md">
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                    <span className="text-sm text-green-700 dark:text-green-300">
+                      No API key required - ready to use
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    This MCP server works without authentication
+                  </p>
+                </div>
+              ) : config ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type={isVisible ? 'text' : 'password'}
+                      value={isVisible ? (apiKey || '') : '•'.repeat(apiKey?.length || 0)}
+                      readOnly
+                      className="flex-1 px-3 py-2 border rounded-md bg-gray-50 dark:bg-gray-800"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleKeyVisibility(provider.id)}
+                    >
+                      {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleRemoveKey(provider.id)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                  
+                  {validationResults[provider.id]?.error && (
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      {validationResults[provider.id].error}
+                    </p>
+                  )}
+                  
+                  <p className="text-xs text-gray-500">
+                    Model: {config.model} | 
+                    Last validated: {config.lastValidated ? new Date(config.lastValidated).toLocaleString() : 'Never'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <APIKeyInput
+                    provider={provider}
+                    onSave={(apiKey) => handleSaveKey(provider.id, apiKey)}
+                  />
+                  
+                  {/* Special note for Turkish Airlines */}
+                  {provider.id === 'turkish-airlines' && (
+                    <div className="p-2 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md">
+                      <p className="text-xs text-blue-700 dark:text-blue-300">
+                        <strong>Note:</strong> Enter your Miles&Smiles account number. Full authentication happens when using the MCP server.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+        </div>
       </div>
 
       {/* Transparency Panel */}

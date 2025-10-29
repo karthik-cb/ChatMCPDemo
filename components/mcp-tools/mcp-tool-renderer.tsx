@@ -21,6 +21,12 @@ import TravelPlanningSummary from './travel/travel-planning-summary'
 import FerrySearchResults from './travel/ferry-search-results'
 import { AirbnbSearchResults } from './airbnb/airbnb-search-results'
 import { AirbnbListingDetails } from './airbnb/airbnb-listing-details'
+import { KiwiFlightSearchResults } from './kiwi/kiwi-flight-search-results'
+import { KiwiAirportSearchResults } from './kiwi/kiwi-airport-search-results'
+import { KiwiCheapestDestinations } from './kiwi/kiwi-cheapest-destinations'
+import { MapboxStaticImage } from './mapbox/mapbox-static-image'
+import { MapboxDirections } from './mapbox/mapbox-directions'
+import { MapboxCategorySearch } from './mapbox/mapbox-category-search'
 import JsonViewer from './generic/json-viewer'
 import DataTable from './generic/data-table'
 
@@ -39,6 +45,21 @@ const toolComponents: Record<string, React.ComponentType<any>> = {
   'expedia.hotel_search': HotelSearchResults,
   'expedia.activity_recommendations': ActivityRecommendations,
   'expedia.travel_planning': TravelPlanningSummary,
+  
+  // Kiwi.com MCP Tools
+  'kiwi.search_flights': KiwiFlightSearchResults,
+  'kiwi.get_flight_details': KiwiFlightSearchResults,
+  'kiwi.search_airports': KiwiAirportSearchResults,
+  'kiwi.get_cheapest_destinations': KiwiCheapestDestinations,
+  
+  // Mapbox MCP Tools
+  'mapbox.static_image': MapboxStaticImage,
+  'mapbox.directions': MapboxDirections,
+  'mapbox.category_search': MapboxCategorySearch,
+  'mapbox.matrix': JsonViewer, // Fallback to JSON viewer for complex data
+  'mapbox.reverse_geocoding': JsonViewer, // Fallback to JSON viewer
+  'mapbox.isochrone': JsonViewer, // Fallback to JSON viewer
+  'mapbox.search_geocode': JsonViewer, // Fallback to JSON viewer
   
   // Generic Tools
   'generic.json_viewer': JsonViewer,

@@ -5,6 +5,9 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { ferryhopperMCPTools } from './ferryhopper-mcp-client'
 import { airbnbMCPTools } from './airbnb-mcp-client'
+import { kiwiMCPTools } from './kiwi-mcp-client'
+import { mapboxMCPTools } from './mapbox-mcp-client'
+import { mcpSettingsManager } from './mcp-settings-manager'
 
 // Travel recommendation tool schema
 const TravelRecommendationSchema = z.object({
@@ -87,11 +90,37 @@ async function simulateExpediaMCPCall(params: z.infer<typeof TravelRecommendatio
   }
 }
 
+// Get enabled MCP tools based on settings
+function getEnabledMCPTools() {
+  const enabledServers = mcpSettingsManager.getEnabledServers()
+  const tools: any = {
+    travelRecommendation: travelRecommendationTool,
+  }
+
+  // Add tools based on enabled servers
+  if (enabledServers.includes('ferryhopper')) {
+    tools.ferryhopper = ferryhopperMCPTools
+  }
+  
+  if (enabledServers.includes('airbnb')) {
+    tools.airbnb = airbnbMCPTools
+  }
+  
+  if (enabledServers.includes('kiwi')) {
+    tools.kiwi = kiwiMCPTools
+  }
+  
+  if (enabledServers.includes('mapbox')) {
+    tools.mapbox = mapboxMCPTools
+  }
+
+  return tools
+}
+
 // Additional MCP tools can be added here
-export const mcpTools = {
-  travelRecommendation: travelRecommendationTool,
-  // Ferryhopper MCP Tools
-  ...ferryhopperMCPTools,
-  // Airbnb MCP Tools
-  ...airbnbMCPTools,
+export const mcpTools = getEnabledMCPTools()
+
+// Export function to get current enabled tools (for dynamic updates)
+export function getCurrentMCPTools() {
+  return getEnabledMCPTools()
 }

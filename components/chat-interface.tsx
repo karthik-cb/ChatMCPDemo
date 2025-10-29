@@ -152,7 +152,7 @@ export default function ChatInterface({
                 onClick={() => setShowSettings(true)}
                 className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors"
               >
-                API Keys
+                Settings
               </button>
               <button
                 onClick={handleNewChat}
@@ -201,6 +201,10 @@ export default function ChatInterface({
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
         onKeysUpdated={setApiKeyConfigs}
+        onMCPSettingsUpdated={() => {
+          // Force a page refresh to reload MCP tools with new settings
+          window.location.reload()
+        }}
       />
     </div>
   )

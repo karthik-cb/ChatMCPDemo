@@ -4,16 +4,21 @@ import {
   generateId,
   createUIMessageStream,
   stepCountIs,
-  generateText
+  generateText,
+  dynamicTool
 } from 'ai'
 import type { UIMessage } from 'ai'
 import { loadChat, saveChat } from '@/lib/chat-store'
-import { mcpTools } from '@/lib/mcp-client'
+import { getCurrentMCPTools } from '@/lib/mcp-client'
 import { ferryhopperMCPTools } from '@/lib/ferryhopper-mcp-client'
 import { airbnbMCPTools } from '@/lib/airbnb-mcp-client'
+import { turkishAirlinesMCPTools } from '@/lib/turkish-airlines-mcp-client'
+import { kiwiMCPTools } from '@/lib/kiwi-mcp-client'
+import { mapboxMCPTools } from '@/lib/mapbox-mcp-client'
 import { getProvider, getModelInstance } from '@/lib/llm-providers'
 import { telemetryCollector } from '@/lib/telemetry'
 import { createSafeLogger } from '@/lib/safe-logger'
+import { mcpUseManager } from '@/lib/mcp-use-manager'
 
 // Create safe logger for this module
 const logger = createSafeLogger('CHAT_API')
@@ -94,14 +99,15 @@ function cleanSchemaForCerebras(schema: any, debugName = 'schema'): any {
   // First convert Zod schema to JSON schema if needed
   const jsonSchema = zodToJsonSchema(schema)
   
-  // Remove unsupported top-level keys
+  // Remove unsupported top-level keys (but keep description for tools)
   const cleaned = { ...jsonSchema }
   const removedKeys = []
   
   if ('$schema' in cleaned) { delete cleaned.$schema; removedKeys.push('$schema') }
   if ('$id' in cleaned) { delete cleaned.$id; removedKeys.push('$id') }
   if ('title' in cleaned) { delete cleaned.title; removedKeys.push('title') }
-  if ('description' in cleaned) { delete cleaned.description; removedKeys.push('description') }
+  // Keep description for tool parameters - it's important for AI understanding
+  // if ('description' in cleaned) { delete cleaned.description; removedKeys.push('description') }
   if ('examples' in cleaned) { delete cleaned.examples; removedKeys.push('examples') }
   if ('default' in cleaned) { delete cleaned.default; removedKeys.push('default') }
   
@@ -286,12 +292,50 @@ export async function POST(req: Request) {
     console.log('Validated messages:', validatedMessages.length, validatedMessages)
     
     // Include tools for providers that support them
-    // Combine travel tools (mock) with Ferryhopper MCP tools (real) and Airbnb MCP tools (real)
-    const allTools = {
-      ...mcpTools,
-      ...ferryhopperMCPTools,
-      ...airbnbMCPTools
+    // Get current enabled MCP tools dynamically
+    const currentMCPTools = getCurrentMCPTools()
+    
+    // Build all available tools first
+    const allAvailableTools: any = {}
+    
+    // Add travel recommendation tool
+    if (currentMCPTools.travelRecommendation) {
+      allAvailableTools.travelRecommendation = currentMCPTools.travelRecommendation
     }
+    
+    // Add enabled MCP server tools
+    if (currentMCPTools.ferryhopper) {
+      Object.assign(allAvailableTools, ferryhopperMCPTools)
+    }
+    
+    if (currentMCPTools.airbnb) {
+      Object.assign(allAvailableTools, airbnbMCPTools)
+    }
+    
+    if (currentMCPTools.kiwi) {
+      Object.assign(allAvailableTools, kiwiMCPTools)
+    }
+    
+    if (currentMCPTools.mapbox) {
+      Object.assign(allAvailableTools, mapboxMCPTools)
+    }
+    
+    // Only include Turkish Airlines tools if enabled
+    if (currentMCPTools.turkishAirlines) {
+      Object.assign(allAvailableTools, turkishAirlinesMCPTools)
+    }
+
+    // Use MCP Use Dynamic Server Selection to prevent context overflow
+    const userQuery = validatedMessages[validatedMessages.length - 1]?.content || ''
+    const queryText = typeof userQuery === 'string' ? userQuery : JSON.stringify(userQuery)
+    
+    logger.debug('User query for tool selection:', queryText)
+    logger.debug('Total available tools:', Object.keys(allAvailableTools).length)
+    
+    // Get context-aware tool selection (max 8 tools to prevent context overflow)
+    const allTools = await mcpUseManager.getContextAwareTools(queryText, allAvailableTools, 8)
+    
+    logger.debug('Selected tools for this query:', Object.keys(allTools))
     
     let tools = (provider === 'openai' || provider === 'anthropic' || provider === 'cerebras') ? allTools : undefined
     
@@ -311,7 +355,7 @@ export async function POST(req: Request) {
             type: "function",
             function: {
               name: toolName,
-              description: tool.description || `Tool: ${toolName}`,
+              description: (tool as any).description || `Tool: ${toolName}`,
               parameters: cleanedParameters,
               // Add strict: true as required by Cerebras tool use
               strict: true
@@ -324,11 +368,9 @@ export async function POST(req: Request) {
           cleanedTools[toolName] = tool
         }
       }
-      // Convert the cleaned tools object to an array format for the AI SDK
-      // But we need to preserve the tool names, so we'll create a proper tools array
-      const toolsArray = Object.entries(cleanedTools).map(([toolName, tool]) => tool)
-      tools = toolsArray as any
-      logger.debug('Final cleaned tools array:', tools)
+      // Keep tools as an object - the AI SDK expects tool names as keys
+      tools = cleanedTools
+      logger.debug('Final cleaned tools object:', tools)
     }
     
     console.log('Using tools for provider:', provider, tools ? 'Yes' : 'No')
@@ -380,91 +422,134 @@ export async function POST(req: Request) {
     const shouldStream = !(provider === 'cerebras' && tools)
     logger.debug(`Provider: ${provider}, Has tools: ${!!tools}, Should stream: ${shouldStream}`)
 
-    // For Cerebras with tools, implement multi-turn tool use pattern
+    // For Cerebras with tools, use AI SDK's built-in multi-step tool calling
     if (provider === 'cerebras' && tools) {
-      logger.debug('Using multi-turn tool use pattern')
+      logger.debug('Using AI SDK multi-step tool calling with dynamicTool')
       
-      // Create a registry of available functions for tool execution
-      const availableFunctions: Record<string, any> = {}
+      // Convert MCP tools to dynamicTool format for better MCP integration
+      const dynamicTools: Record<string, any> = {}
       for (const [toolName, tool] of Object.entries(allTools)) {
-        if (tool && typeof tool === 'object' && 'execute' in tool) {
-          availableFunctions[toolName] = tool
+        if (tool && typeof tool === 'object' && 'execute' in tool && 'parameters' in tool) {
+          dynamicTools[toolName] = dynamicTool({
+            description: (tool as any).description || `Execute ${toolName}`,
+            inputSchema: (tool as any).parameters,
+            execute: async (args: any) => {
+              logger.debug(`Executing dynamic tool - ${toolName}:`, args)
+              try {
+                const result = await (tool as any).execute(args)
+                logger.debug(`Dynamic tool result - ${toolName}:`, result)
+                return result
+              } catch (error) {
+                logger.error(`Dynamic tool error - ${toolName}:`, error)
+                throw error
+              }
+            }
+          })
         }
       }
       
-      logger.debug('Available functions:', Object.keys(availableFunctions))
+      logger.debug('Dynamic tools created:', Object.keys(dynamicTools))
       
-      // Start with the initial messages
-      let messages = convertToModelMessages(validatedMessages)
-      let responseText = ''
+      // System prompt for better tool selection
+      const systemPrompt = `You are a helpful travel assistant with access to various MCP (Model Context Protocol) tools for travel planning.
+
+Available tool categories:
+- **Mapbox**: For mapping, routing, and location services (mapbox_static_image, mapbox_directions, mapbox_category_search, mapbox_reverse_geocoding, mapbox_matrix, mapbox_isochrone, mapbox_search_geocode)
+- **Kiwi.com**: For flight search and booking (kiwi_search_flights, kiwi_get_flight_details, kiwi_search_airports, kiwi_get_cheapest_destinations)
+- **FerryHopper**: For ferry routes and booking (getPorts, getRoutes, getSchedules, bookFerry)
+- **Airbnb**: For accommodation search (airbnb_search_listings, airbnb_get_listing_details)
+- **Turkish Airlines**: For Turkish Airlines specific services (if enabled)
+- **Expedia**: For general travel recommendations (travelRecommendation)
+
+When users ask about:
+- **Gas stations along routes**: Use mapbox_directions to get the route, then mapbox_category_search with category "gas_station" along the route
+- **Maps and locations**: Use mapbox_static_image, mapbox_directions, or mapbox_category_search
+- **Flights**: Use kiwi_search_flights or kiwi_get_flight_details
+- **Ferries**: Use FerryHopper tools
+- **Accommodation**: Use Airbnb tools
+- **General travel**: Use Expedia travelRecommendation
+
+Always use the exact tool names provided. Never use generic tool names like "0" or "search".`
+
+      // Track successful results and failed tools for synthesis
+      let successfulResults: any[] = []
+      let failedTools: string[] = []
       
-      // Multi-turn tool use loop as per Cerebras documentation
-      while (true) {
-        logger.debug('Making API call with messages:', messages)
-        
-        const resp = await generateText({
-          model: modelInstance as any,
-          messages,
-          tools,
-          maxOutputTokens: 40960,
-        })
-        
-        logger.debug('API response:', resp)
-        
-        // If the assistant didn't ask for a tool, we're done
-        if (!resp.toolCalls || resp.toolCalls.length === 0) {
-          logger.debug('No tool calls, final response')
-          responseText = resp.text || ''
-          break
-        }
-        
-        // Save the assistant turn exactly as returned
-        messages.push({
-          role: 'assistant',
-          content: resp.content as any
-        })
-        
-        // Execute all tool calls
-        for (const toolCall of resp.toolCalls) {
-          logger.debug(`Executing tool - ${toolCall.toolName}:`, toolCall.input)
+      // Use AI SDK's built-in multi-step calling with proper structure
+      const result = await generateText({
+        model: modelInstance as any,
+        system: systemPrompt,
+        messages: validatedMessages,
+        tools: dynamicTools,
+        maxOutputTokens: 40960,
+        stopWhen: stepCountIs(4), // Conservative limit for travel planning
+        onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
+          logger.debug('Step finished:', { 
+            text: text?.substring(0, 100) + '...', 
+            toolCalls: toolCalls?.length, 
+            toolResults: toolResults?.length, 
+            finishReason
+          })
           
-          try {
-            const fname = toolCall.toolName
-            
-            if (!(fname in availableFunctions)) {
-              logger.debug(`Tool not found - ${fname}`)
-              // Feed error back to model
-              messages.push({
-                role: 'tool',
-                toolCallId: toolCall.toolCallId,
-                content: JSON.stringify({ error: `Unknown tool requested: ${fname}` })
-              } as any)
-              continue
-            }
-            
-            // Execute the tool
-            const argsDict = toolCall.input
-            const output = await availableFunctions[fname].execute(argsDict)
-            
-            logger.debug(`Tool result - ${fname}:`, output)
-            
-            // Feed the tool result back
-            messages.push({
-              role: 'tool',
-              toolCallId: toolCall.toolCallId,
-              content: JSON.stringify(output)
-            } as any)
-            
-          } catch (error) {
-            logger.error(`Tool error - ${toolCall.toolName}:`, error)
-            messages.push({
-              role: 'tool',
-              toolCallId: toolCall.toolCallId,
-              content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as any)
+          // Track successful and failed tools for synthesis
+          if (toolResults) {
+            toolResults.forEach((result: any, index: number) => {
+              const toolCall = toolCalls?.[index]
+              if (toolCall) {
+                if (result && !result.isError) {
+                  successfulResults.push({
+                    toolName: toolCall.toolName,
+                    result: result,
+                    step: successfulResults.length + 1
+                  })
+                  logger.debug(`✅ Tool ${toolCall.toolName} succeeded`)
+                } else {
+                  failedTools.push(toolCall.toolName)
+                  logger.debug(`❌ Tool ${toolCall.toolName} failed:`, result)
+                }
+              }
+            })
           }
         }
+      })
+      
+      logger.debug('Multi-step result:', result)
+      let responseText = result.text || ''
+      
+      // If we have successful results but no final text, provide synthesis
+      if (successfulResults.length > 0 && !responseText) {
+        try {
+          const synthesisPrompt = `Based on the successful tool results below, provide a comprehensive summary for the user. 
+          
+Successful results:
+${successfulResults.map(r => `- ${r.toolName}: ${JSON.stringify(r.result)}`).join('\n')}
+
+${failedTools.length > 0 ? `\nNote: Some tools failed (${failedTools.join(', ')}) but focus on the successful results.` : ''}
+
+Provide a helpful, actionable response based on the available data.`
+          
+          const synthesisResult = await generateText({
+            model: modelInstance as any,
+            messages: [
+              { role: 'system' as const, content: synthesisPrompt },
+              { role: 'user' as const, content: 'Please synthesize the results and provide a helpful response.' }
+            ],
+            maxOutputTokens: 40960,
+          })
+          
+          responseText = synthesisResult.text || 'I found some information for you, but some tools encountered issues.'
+          
+        } catch (error) {
+          logger.error('Synthesis error:', error)
+          responseText = `I found ${successfulResults.length} successful result(s) but encountered some issues. Here's what I found: ${successfulResults.map(r => r.toolName).join(', ')}`
+        }
       }
+      
+      logger.debug('Multi-step completed:', { 
+        steps: result.steps?.length || 0, 
+        successful: successfulResults.length, 
+        failed: failedTools.length 
+      })
       
       // Convert the result to a stream for consistency
       const encoder = new TextEncoder()
@@ -480,13 +565,71 @@ export async function POST(req: Request) {
       })
     }
 
+    // For streaming providers, also use dynamicTool for better MCP integration
+    let finalTools = tools
+    if (tools) {
+      logger.debug('Converting tools to dynamicTool format for streaming')
+      const dynamicTools: Record<string, any> = {}
+      for (const [toolName, tool] of Object.entries(allTools)) {
+        if (tool && typeof tool === 'object' && 'execute' in tool && 'parameters' in tool) {
+          dynamicTools[toolName] = dynamicTool({
+            description: (tool as any).description || `Execute ${toolName}`,
+            inputSchema: (tool as any).parameters,
+            execute: async (args: any) => {
+              logger.debug(`Executing streaming dynamic tool - ${toolName}:`, args)
+              try {
+                const result = await (tool as any).execute(args)
+                logger.debug(`Streaming dynamic tool result - ${toolName}:`, result)
+                return result
+              } catch (error) {
+                logger.error(`Streaming dynamic tool error - ${toolName}:`, error)
+                throw error
+              }
+            }
+          })
+        }
+      }
+      finalTools = dynamicTools
+    }
+
+    // System prompt for better tool selection
+    const systemPrompt = `You are a helpful travel assistant with access to various MCP (Model Context Protocol) tools for travel planning.
+
+Available tool categories:
+- **Mapbox**: For mapping, routing, and location services (mapbox_static_image, mapbox_directions, mapbox_category_search, mapbox_reverse_geocoding, mapbox_matrix, mapbox_isochrone, mapbox_search_geocode)
+- **Kiwi.com**: For flight search and booking (kiwi_search_flights, kiwi_get_flight_details, kiwi_search_airports, kiwi_get_cheapest_destinations)
+- **FerryHopper**: For ferry routes and booking (getPorts, getRoutes, getSchedules, bookFerry)
+- **Airbnb**: For accommodation search (airbnb_search_listings, airbnb_get_listing_details)
+- **Turkish Airlines**: For Turkish Airlines specific services (if enabled)
+- **Expedia**: For general travel recommendations (travelRecommendation)
+
+When users ask about:
+- **Gas stations along routes**: Use mapbox_directions to get the route, then mapbox_category_search with category "gas_station" along the route
+- **Maps and locations**: Use mapbox_static_image, mapbox_directions, or mapbox_category_search
+- **Flights**: Use kiwi_search_flights or kiwi_get_flight_details
+- **Ferries**: Use FerryHopper tools
+- **Accommodation**: Use Airbnb tools
+- **General travel**: Use Expedia travelRecommendation
+
+Always use the exact tool names provided. Never use generic tool names like "0" or "search".`
+
+    // Convert messages first, then add system prompt
+    const convertedMessages = convertToModelMessages(validatedMessages)
+    const messagesWithSystem = [
+      { role: 'system' as const, content: systemPrompt },
+      ...convertedMessages
+    ]
+
+    // Use proven stepCountIs approach for streaming providers too
+    const customStopWhenStreaming = stepCountIs(4) // Conservative limit for travel planning
+
     const result = streamText({
       model: modelInstance as any, // Type assertion to handle union types
-      messages: convertToModelMessages(validatedMessages),
-      ...(tools && { tools }),
+      messages: messagesWithSystem,
+      ...(finalTools && { tools: finalTools }),
       maxOutputTokens: 40960,
-      // enable multi-step tool usage and follow-ups
-      stopWhen: stepCountIs(5),
+      // enable multi-step tool usage and follow-ups with custom stopping logic
+      stopWhen: customStopWhenStreaming,
       onFinish: async (message: any) => {
         // Complete telemetry recording
         const endTime = Date.now()

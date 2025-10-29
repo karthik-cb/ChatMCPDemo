@@ -6,7 +6,7 @@ import { spawn } from 'child_process'
 
 // Airbnb MCP Server Configuration
 const AIRBNB_MCP_COMMAND = 'npx'
-const AIRBNB_MCP_ARGS = ['-y', '@openbnb/mcp-server-airbnb']
+const AIRBNB_MCP_ARGS = ['-y', '@openbnb/mcp-server-airbnb', '--ignore-robots-txt']
 
 // Airbnb search schema
 const AirbnbSearchSchema = z.object({
