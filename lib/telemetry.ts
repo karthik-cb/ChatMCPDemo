@@ -7,8 +7,13 @@ export const telemetrySchema = z.object({
   startTime: z.number(),
   endTime: z.number().optional(),
   tokensUsed: z.number().optional(),
+  inputTokens: z.number().optional(),
+  outputTokens: z.number().optional(),
   latency: z.number().optional(),
   toolCalls: z.number().optional(),
+  msToFirstChunk: z.number().optional(),
+  msToFinish: z.number().optional(),
+  avgCompletionTokensPerSecond: z.number().optional(),
   error: z.string().optional(),
 })
 
@@ -21,6 +26,11 @@ export interface PerformanceMetrics {
   successRate: number
   averageTokensUsed: number
   toolCallSuccessRate: number
+  averageTTFT?: number
+  averageE2E?: number
+  averageTokensIn?: number
+  averageTokensOut?: number
+  averageCompletionTokensPerSecond?: number
 }
 
 export class TelemetryCollector {
@@ -44,16 +54,36 @@ export class TelemetryCollector {
     const successRate = (successfulRequests / totalRequests) * 100
 
     const averageLatency = completed.length > 0 
-      ? completed.reduce((sum, d) => sum + (d.latency || 0), 0) / completed.length 
+      ? completed.reduce((sum, d) => sum + (d.msToFinish ?? d.latency ?? 0), 0) / completed.length 
       : 0
 
     const averageTokensUsed = completed.length > 0
-      ? completed.reduce((sum, d) => sum + (d.tokensUsed || 0), 0) / completed.length
+      ? completed.reduce((sum, d) => sum + (d.tokensUsed ?? ((d.inputTokens || 0) + (d.outputTokens || 0))), 0) / completed.length
       : 0
 
     const toolCalls = completed.filter(d => d.toolCalls && d.toolCalls > 0)
     const toolCallSuccessRate = toolCalls.length > 0 
       ? (toolCalls.length / completed.length) * 100 
+      : 0
+
+    const averageTTFT = completed.length > 0
+      ? completed.reduce((sum, d) => sum + (d.msToFirstChunk || 0), 0) / completed.length
+      : 0
+
+    const averageE2E = completed.length > 0
+      ? completed.reduce((sum, d) => sum + (d.msToFinish || 0), 0) / completed.length
+      : 0
+
+    const averageTokensIn = completed.length > 0
+      ? completed.reduce((sum, d) => sum + (d.inputTokens || 0), 0) / completed.length
+      : 0
+
+    const averageTokensOut = completed.length > 0
+      ? completed.reduce((sum, d) => sum + (d.outputTokens || 0), 0) / completed.length
+      : 0
+
+    const averageCompletionTokensPerSecond = completed.length > 0
+      ? completed.reduce((sum, d) => sum + (d.avgCompletionTokensPerSecond || 0), 0) / completed.length
       : 0
 
     return {
@@ -62,7 +92,12 @@ export class TelemetryCollector {
       totalRequests,
       successRate,
       averageTokensUsed,
-      toolCallSuccessRate
+      toolCallSuccessRate,
+      averageTTFT,
+      averageE2E,
+      averageTokensIn,
+      averageTokensOut,
+      averageCompletionTokensPerSecond,
     }
   }
 

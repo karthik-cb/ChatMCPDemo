@@ -53,63 +53,25 @@ interface ProviderComparison {
 export default function EnhancedMetricsPanel({ metrics }: EnhancedMetricsPanelProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'performance' | 'comparison' | 'usage'>('overview')
   const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | '7d'>('1h')
-  const [chartData, setChartData] = useState<ChartData[]>([])
   const [providerComparison, setProviderComparison] = useState<ProviderComparison[]>([])
 
-  // Generate mock time series data for demonstration
+  // Build provider comparison from real metrics
   useEffect(() => {
-    const generateTimeSeriesData = () => {
-      const data: ChartData[] = []
-      const now = new Date()
-      const intervals = timeRange === '1h' ? 12 : timeRange === '6h' ? 24 : timeRange === '24h' ? 48 : 168
-      const intervalMs = timeRange === '1h' ? 5 * 60 * 1000 : timeRange === '6h' ? 15 * 60 * 1000 : timeRange === '24h' ? 30 * 60 * 1000 : 60 * 60 * 1000
-
-      for (let i = intervals; i >= 0; i--) {
-        const timestamp = new Date(now.getTime() - i * intervalMs)
-        const dataPoint: ChartData = {
-          timestamp: timestamp.toLocaleTimeString(),
-          cerebras: Math.random() * 200 + 50, // 50-250ms
-          openai: Math.random() * 800 + 200,  // 200-1000ms
-          anthropic: Math.random() * 600 + 300, // 300-900ms
-        }
-        data.push(dataPoint)
-      }
-      setChartData(data)
+    const colors: Record<string, string> = {
+      cerebras: '#8b5cf6',
+      openai: '#10b981',
+      anthropic: '#f59e0b',
     }
-
-    generateTimeSeriesData()
-  }, [timeRange])
-
-  // Generate provider comparison data
-  useEffect(() => {
-    const comparison: ProviderComparison[] = [
-      {
-        provider: 'Cerebras',
-        avgLatency: 150,
-        successRate: 98.5,
-        totalRequests: 1250,
-        avgTokens: 45,
-        color: '#8b5cf6'
-      },
-      {
-        provider: 'OpenAI',
-        avgLatency: 650,
-        successRate: 97.2,
-        totalRequests: 980,
-        avgTokens: 52,
-        color: '#10b981'
-      },
-      {
-        provider: 'Anthropic',
-        avgLatency: 750,
-        successRate: 96.8,
-        totalRequests: 720,
-        avgTokens: 48,
-        color: '#f59e0b'
-      }
-    ]
+    const comparison: ProviderComparison[] = Object.entries(metrics).map(([providerKey, data]) => ({
+      provider: providerKey.charAt(0).toUpperCase() + providerKey.slice(1),
+      avgLatency: Math.max(0, Math.round(data.averageLatency || 0)),
+      successRate: Math.max(0, Math.min(100, Number(data.successRate?.toFixed?.(1) ?? data.successRate))),
+      totalRequests: data.totalRequests,
+      avgTokens: Math.max(0, Math.round(data.averageTokensUsed || 0)),
+      color: colors[providerKey] || '#64748b',
+    }))
     setProviderComparison(comparison)
-  }, [])
+  }, [metrics])
 
   const getProviderIcon = (provider: string) => {
     switch (provider.toLowerCase()) {
@@ -120,13 +82,7 @@ export default function EnhancedMetricsPanel({ metrics }: EnhancedMetricsPanelPr
     }
   }
 
-  const getPerformanceGrade = (latency: number) => {
-    if (latency < 200) return { grade: 'A+', color: '#10b981', label: 'Excellent' }
-    if (latency < 400) return { grade: 'A', color: '#22c55e', label: 'Very Good' }
-    if (latency < 600) return { grade: 'B', color: '#eab308', label: 'Good' }
-    if (latency < 800) return { grade: 'C', color: '#f59e0b', label: 'Fair' }
-    return { grade: 'D', color: '#ef4444', label: 'Poor' }
-  }
+  // Simple helpers only; no grading system
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: Activity },
@@ -182,115 +138,105 @@ export default function EnhancedMetricsPanel({ metrics }: EnhancedMetricsPanelPr
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {/* Key Metrics Cards */}
+            {/* Key Metrics Cards (from real data) */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-card border rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
-                    <Zap className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Fastest Provider</p>
-                    <p className="text-lg font-semibold">Cerebras</p>
-                    <p className="text-xs text-green-600">150ms avg</p>
-                  </div>
-                </div>
-              </div>
+              {(() => {
+                const providers = Object.keys(metrics)
+                if (providers.length === 0) {
+                  return (
+                    <div className="col-span-2 text-sm text-muted-foreground">
+                      No metrics yet. Run a chat to collect telemetry.
+                    </div>
+                  )
+                }
+                const fastest = providers
+                  .map((p) => ({ p, lat: metrics[p].averageLatency }))
+                  .filter((x) => x.lat > 0)
+                  .sort((a, b) => a.lat - b.lat)[0]
+                const totalRequests = providers.reduce((s, p) => s + metrics[p].totalRequests, 0)
+                const avgSuccess = providers.reduce((s, p) => s + metrics[p].successRate, 0) / providers.length
+                return (
+                  <>
+                    <div className="bg-card border rounded-lg p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
+                          <Zap className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Fastest Provider</p>
+                          <p className="text-lg font-semibold">
+                            {fastest ? fastest.p : '—'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {fastest ? `${Math.round(fastest.lat)}ms avg` : 'No data yet'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
 
-              <div className="bg-card border rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
-                    <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Success Rate</p>
-                    <p className="text-lg font-semibold">98.5%</p>
-                    <p className="text-xs text-green-600">+1.3% vs others</p>
-                  </div>
-                </div>
-              </div>
+                    <div className="bg-card border rounded-lg p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+                          <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Success Rate (avg)</p>
+                          <p className="text-lg font-semibold">{isFinite(avgSuccess) ? `${avgSuccess.toFixed(1)}%` : '—'}</p>
+                        </div>
+                      </div>
+                    </div>
 
-              <div className="bg-card border rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
-                    <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Requests</p>
-                    <p className="text-lg font-semibold">2,950</p>
-                    <p className="text-xs text-blue-600">+27% this week</p>
-                  </div>
-                </div>
-              </div>
+                    <div className="bg-card border rounded-lg p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                          <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Total Requests</p>
+                          <p className="text-lg font-semibold">{totalRequests.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
 
-              <div className="bg-card border rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-orange-100 dark:bg-orange-900 rounded-lg">
-                    <DollarSign className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Cost Efficiency</p>
-                    <p className="text-lg font-semibold">$0.12</p>
-                    <p className="text-xs text-orange-600">per 1K tokens</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Real-time Performance */}
-            <div className="bg-card border rounded-lg p-4">
-              <h3 className="text-lg font-semibold mb-4">Real-time Performance</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={chartData.slice(-10)}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" />
-                  <YAxis />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="cerebras" stackId="1" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.6} />
-                  <Area type="monotone" dataKey="openai" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.6} />
-                  <Area type="monotone" dataKey="anthropic" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.6} />
-                </AreaChart>
-              </ResponsiveContainer>
+                    <div className="bg-card border rounded-lg p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-orange-100 dark:bg-orange-900 rounded-lg">
+                          <BarChart3 className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Avg Tokens (avg)</p>
+                          <p className="text-lg font-semibold">
+                            {(
+                              providers.reduce((s, p) => s + (metrics[p].averageTokensUsed || 0), 0) / providers.length
+                            ).toFixed(0)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
           </div>
         )}
 
         {activeTab === 'performance' && (
           <div className="space-y-6">
-            {/* Latency Comparison */}
             <div className="bg-card border rounded-lg p-4">
-              <h3 className="text-lg font-semibold mb-4">Response Time Comparison</h3>
+              <h3 className="text-lg font-semibold mb-4">Current Avg Latency</h3>
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={chartData}>
+                <BarChart data={providerComparison}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" />
-                  <YAxis label={{ value: 'Latency (ms)', angle: -90, position: 'insideLeft' }} />
+                  <XAxis dataKey="provider" />
+                  <YAxis label={{ value: 'ms', angle: -90, position: 'insideLeft' }} />
                   <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="cerebras" stroke="#8b5cf6" strokeWidth={3} dot={{ fill: '#8b5cf6' }} />
-                  <Line type="monotone" dataKey="openai" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981' }} />
-                  <Line type="monotone" dataKey="anthropic" stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b' }} />
-                </LineChart>
+                  <Bar dataKey="avgLatency" name="Avg Latency (ms)">
+                    {providerComparison.map((entry, index) => (
+                      <Cell key={`lat-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
-            </div>
-
-            {/* Performance Grades */}
-            <div className="grid grid-cols-3 gap-4">
-              {providerComparison.map((provider) => {
-                const performance = getPerformanceGrade(provider.avgLatency)
-                return (
-                  <div key={provider.provider} className="bg-card border rounded-lg p-4 text-center">
-                    <div className="text-2xl mb-2">{getProviderIcon(provider.provider)}</div>
-                    <h4 className="font-semibold mb-2">{provider.provider}</h4>
-                    <div className="text-3xl font-bold mb-1" style={{ color: performance.color }}>
-                      {performance.grade}
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">{performance.label}</p>
-                    <p className="text-lg font-semibold">{provider.avgLatency}ms</p>
-                    <p className="text-xs text-muted-foreground">avg latency</p>
-                  </div>
-                )
-              })}
             </div>
           </div>
         )}
@@ -346,7 +292,6 @@ export default function EnhancedMetricsPanel({ metrics }: EnhancedMetricsPanelPr
 
         {activeTab === 'usage' && (
           <div className="space-y-6">
-            {/* Usage Distribution */}
             <div className="bg-card border rounded-lg p-4">
               <h3 className="text-lg font-semibold mb-4">Request Distribution</h3>
               <ResponsiveContainer width="100%" height={300}>
@@ -370,16 +315,19 @@ export default function EnhancedMetricsPanel({ metrics }: EnhancedMetricsPanelPr
               </ResponsiveContainer>
             </div>
 
-            {/* Token Usage */}
             <div className="bg-card border rounded-lg p-4">
-              <h3 className="text-lg font-semibold mb-4">Token Usage Efficiency</h3>
+              <h3 className="text-lg font-semibold mb-4">Avg Tokens per Request</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={providerComparison}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="provider" />
                   <YAxis />
                   <Tooltip />
-                  <Bar dataKey="avgTokens" fill="#f59e0b" name="Avg Tokens per Request" />
+                  <Bar dataKey="avgTokens" name="Avg Tokens">
+                    {providerComparison.map((entry, index) => (
+                      <Cell key={`tok-${index}`} fill="#f59e0b" />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>

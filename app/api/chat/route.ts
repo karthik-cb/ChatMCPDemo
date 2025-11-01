@@ -17,6 +17,7 @@ import { kiwiMCPTools } from '@/lib/kiwi-mcp-client'
 import { mapboxMCPTools } from '@/lib/mapbox-mcp-client'
 import { getProvider, getModelInstance } from '@/lib/llm-providers'
 import { telemetryCollector } from '@/lib/telemetry'
+import { getAITracer } from '@/lib/ai-otel'
 import { createSafeLogger } from '@/lib/safe-logger'
 import { mcpUseManager } from '@/lib/mcp-use-manager'
 
@@ -623,6 +624,7 @@ Always use the exact tool names provided. Never use generic tool names like "0" 
     // Use proven stepCountIs approach for streaming providers too
     const customStopWhenStreaming = stepCountIs(4) // Conservative limit for travel planning
 
+    const tracer = getAITracer()
     const result = streamText({
       model: modelInstance as any, // Type assertion to handle union types
       messages: messagesWithSystem,
@@ -630,25 +632,20 @@ Always use the exact tool names provided. Never use generic tool names like "0" 
       maxOutputTokens: 40960,
       // enable multi-step tool usage and follow-ups with custom stopping logic
       stopWhen: customStopWhenStreaming,
+      // Enable OpenTelemetry via AI SDK experimental telemetry to capture spans and usage
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: `chat:${provider}:${selectedModel}`,
+        metadata: {
+          hasTools: Boolean(finalTools),
+        },
+        // Avoid recording full inputs/outputs for privacy; spans still capture timing/usage
+        recordInputs: false,
+        recordOutputs: false,
+        tracer,
+      },
       onFinish: async (message: any) => {
-        // Complete telemetry recording
-        const endTime = Date.now()
-        const latency = endTime - startTime
-        
-        // Get usage from the result
-        const finalResult = await result
-        const usage = await finalResult.usage
-        
-        telemetryCollector.recordRequest({
-          provider,
-          model: llmProvider.name,
-          startTime,
-          endTime,
-          latency,
-          tokensUsed: usage?.totalTokens,
-          toolCalls: message.toolCalls?.length || 0,
-        })
-        
+        // Spans will be exported via OpenTelemetry exporter; only persist chat
         // Save updated messages to chat store
         const updatedMessages = [...validatedMessages, message]
         await saveChat({ chatId: id, messages: updatedMessages })
